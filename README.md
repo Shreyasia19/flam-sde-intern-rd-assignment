@@ -1,104 +1,107 @@
-# Curve Parameter Recovery
-
-## Overview
-In this project, the goal is to recover the parameters of a parametric curve using only a set of \((x, y)\) points. The challenge is that the original parameter \(t\) is not given, which makes the problem a bit tricky.
-
-We aim to estimate three unknowns:
-- Rotation angle (\(\theta\))
-- Growth factor (\(M\))
-- Horizontal shift (\(X\))
-
----
-
 ## Approach
 
-### Understanding the Structure
-After analyzing the equations, the key realization was that the curve is basically a transformed version of a simpler function:
+The problem: we are given 1500 \((x, y)\) points sampled from a curve for \(6 \leq t \leq 60\), but the corresponding value of \(t\) for each point is not provided. The goal is to recover the parameters \( \theta \), \( M \), and \( X \).
+
+---
+
+### Step 1 — Identify the structure
+
+Rewriting the equations:
 
 \[
-B(t) = e^{M|t|} \cdot \sin(0.3t)
+x - X = t\cos(\theta) - B\sin(\theta)
+\]
+\[
+y - 42 = t\sin(\theta) + B\cos(\theta)
 \]
 
-The original point \((t, B(t))\) is:
-- Rotated by an angle \(\theta\)
-- Shifted by \((X, 42)\)
-
----
-
-### Key Idea
-Instead of trying to guess \(t\) for every point (which would be messy and inefficient), we can reverse the transformation:
-
-1. Shift the points back:
-   \[
-   (x - X, \; y - 42)
-   \]
-
-2. Undo the rotation (rotate by \(-\theta\))
-
-Once we do this, something nice happens:
-- The x-part directly gives us \(t\)
-- The y-part gives us \(B(t)\)
-
-This avoids solving for \(t\) separately and simplifies the whole problem a lot.
-
----
-
-### Optimization Setup
-Now the task becomes finding the best values of \(\theta\), \(M\), and \(X\) such that:
+where:
 
 \[
-\text{Recovered } B(t) \approx e^{M|t|} \cdot \sin(0.3t)
+B = e^{M|t|} \cdot \sin(0.3t)
 \]
 
-We minimize the squared error:
+This is exactly the formula for rotating the point \((t, B)\) by an angle \(\theta\).  
+So, \((x - X, y - 42)\) is simply a rotated version of \((t, B)\).
+
+---
+
+### Step 2 — Undo the rotation
+
+Since rotation is reversible, we can rotate the points back by \(-\theta\) to recover the original values.
+
+Using complex numbers makes this very clean:
 
 \[
-\sum \left(
-\text{Im}(W) - e^{M \cdot \text{Re}(W)} \cdot \sin(0.3 \cdot \text{Re}(W))
-\right)^2
+Z = (x - X) + i(y - 42)
+\]
+\[
+W = Z \cdot e^{-i\theta} = t + iB
 \]
 
+This directly gives:
+- \( \text{Re}(W) = t \)
+- \( \text{Im}(W) = B \)
+
+So we recover \(t\) **without needing to guess or match it per point**, which avoids a much slower fitting process.
+
 ---
 
-### How It Was Solved
-- Used `scipy.optimize.least_squares` for fitting  
-- Tried multiple starting points to avoid getting stuck in bad solutions  
-- Refined the result with stricter tolerances for better accuracy  
+### Step 3 — Reduce to an optimization problem
+
+For the correct parameters:
+
+\[
+\text{Im}(W) = e^{M|\text{Re}(W)|} \cdot \sin(0.3 \cdot \text{Re}(W))
+\]
+
+So the error for each point becomes:
+
+\[
+\text{error} = \text{Im}(W) - e^{M \cdot \text{Re}(W)} \cdot \sin(0.3 \cdot \text{Re}(W))
+\]
+
+We minimize the sum of squared errors over all points.
+
+This reduces the problem to a **3-parameter nonlinear least-squares fit**.
 
 ---
 
-## Results
+### Step 4 — Solve
 
-The recovered parameters are:
+- Used `scipy.optimize.least_squares`
+- Ran multiple initial guesses across bounds:
+  - \(0^\circ < \theta < 50^\circ\)
+  - \(-0.05 < M < 0.05\)
+  - \(0 < X < 100\)
+- Selected the best result and refined it with tighter tolerances
 
-- \(\theta = 0.523599\) radians (**30°**)  
-- \(M = 0.03\)  
-- \(X = 55\)
+---
 
-The maximum error across all 1500 points is:
+## Result
+
+| Parameter | Value |
+|----------|------|
+| \( \theta \) | 0.523599 rad (30°) |
+| \( M \) | 0.03 |
+| \( X \) | 55 |
+
+**Maximum residual across all 1500 points:**
 
 \[
 \approx 1.8 \times 10^{-5}
 \]
 
-This is extremely small, meaning the fit is almost perfect.
+This is extremely small and mainly due to floating-point precision, indicating an essentially exact fit.
 
 ---
 
-## Final Equation
+## Verification
 
-\[
-\left(
-t \cos(0.523599)
-- e^{0.03|t|} \cdot \sin(0.3t)\sin(0.523599)
-+ 55,\;
-42 + t \sin(0.523599)
-+ e^{0.03|t|} \cdot \sin(0.3t)\cos(0.523599)
-\right)
-\]
+The recovered curve was plotted in Desmos over \(6 \leq t \leq 60\), and it visually matches the provided data points very closely in both shape and scale.
 
 ---
 
-## Desmos Version
+## Conclusion
 
-https://www.desmos.com/calculator/bv01iaqmqn
+By recognizing the hidden rotation structure, the problem was simplified from a complex curve-fitting task into a small 3-parameter optimization problem. This made the solution both efficient and highly accurate.
